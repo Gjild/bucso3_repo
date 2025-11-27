@@ -37,19 +37,35 @@ class PlannerResult:
     spur_results: List[SpurResult]
     summaries: Dict[str, ConfigSpurSummary]
 
+@dataclass
+class SearchResult:
+    """
+    Internal helper result from _search_lo_plans_for_filter_count.
+
+    worst_margin_db:
+        The worst (most negative) spur margin across all configs for this
+        LO-plan / IF2-bank combination. None means "no margin computed"
+        (no applicable limits).
+    """
+    lo_plans: List[LOPlanCandidate]
+    if2_bank_design: IF2BankDesignResult
+    spur_results: List[SpurResult]
+    summaries: Dict[str, ConfigSpurSummary]
+    feasible: bool
+    worst_margin_db: Optional[float]
 
 class Planner:
     """
     High-level planning engine.
     """
 
-    def __init__(self, cfg: SystemConfig):
+    def __init__(self, cfg: SystemConfig, progress: ProgressReporter | None = None):
         self.cfg = cfg
         self.rf_filter = RFFilter.from_csv(cfg.filters.rf_bpf_csv_path)
         # Pre-load spur mask (if any) once for the whole run
         self._mask_freqs, self._mask_levels = prepare_mask(cfg)
         # Progress reporter (defaults to a no-op)
-        self.progress = NullProgressReporter()
+        self.progress = progress or NullProgressReporter()
 
     def _enumerate_lo_plans(self) -> Dict[str, List[LOPlanCandidate]]:
         """
@@ -172,11 +188,18 @@ class Planner:
         per_cfg_candidates: Dict[str, List[LOPlanCandidate]],
         control_regions_by_cfg: Dict[str, List[IF2SpurControlRegion]],
         n_filters: int,
-    ) -> Optional[tuple[List[LOPlanCandidate], IF2BankDesignResult, List[SpurResult], Dict[str, ConfigSpurSummary]]]:
+    ) -> Optional[SearchResult]:
         """
         For a fixed IF2 filter count (n_filters), search over LO-plan combinations
-        and find a feasible solution that minimizes (n_distinct_LO1, n_distinct_LO2)
-        in lexicographic order.
+        and find a solution that:
+
+          * If at least one feasible combination exists (all spur margins >= 0 dB):
+                - minimize (n_distinct_LO1, n_distinct_LO2) lexicographically.
+
+          * If NO feasible combination exists:
+                - return the "least bad" combination, i.e. the one whose global
+                  worst spur margin is closest to 0 dB (largest margin, even if
+                  negative). Ties are broken by LO reuse (fewer LO retunes).
 
         Search is bounded by:
             * max_lo_candidates_per_rf   – limits candidates per RF config
@@ -195,17 +218,22 @@ class Planner:
             trimmed[cid] = cands[:max_per_cfg]
 
         max_combos = max(1, cfg.grids.max_if2_bank_candidates)
-        
+
         self.progress.start(
             f"LO-plan search for n_filters={n_filters}",
             total=max_combos,
         )
 
-        best_lo_plans: Optional[List[LOPlanCandidate]] = None
-        best_bank_design: Optional[IF2BankDesignResult] = None
-        best_spur_results: List[SpurResult] = []
-        best_summaries: Dict[str, ConfigSpurSummary] = {}
-        best_score: Optional[tuple[int, int]] = None  # (n_distinct_LO1, n_distinct_LO2)
+        # Best feasible solution (all margins >= 0 dB)
+        best_feasible: Optional[SearchResult] = None
+        best_feasible_score: Optional[tuple[int, int]] = None  # (n_LO1, n_LO2)
+        best_feasible_margin: Optional[float] = None           # worst margin for that solution
+
+        # Best *infeasible* solution (no margin >= 0 for at least one config),
+        # chosen by largest worst_margin_db (closest to 0), tie-broken by LO reuse.
+        best_infeasible: Optional[SearchResult] = None
+        best_infeasible_margin: Optional[float] = None          # worst (negative) margin
+        best_infeasible_score: Optional[tuple[int, int]] = None # (n_LO1, n_LO2)
 
         combos_tested = 0
 
@@ -215,8 +243,9 @@ class Planner:
             used_lo1: set[float],
             used_lo2: set[float],
         ) -> None:
-            nonlocal best_lo_plans, best_bank_design, best_spur_results, best_summaries
-            nonlocal best_score, combos_tested
+            nonlocal best_feasible, best_feasible_score, best_feasible_margin
+            nonlocal best_infeasible, best_infeasible_margin, best_infeasible_score
+            nonlocal combos_tested
 
             if combos_tested >= max_combos:
                 return
@@ -240,33 +269,61 @@ class Planner:
                     bank_design,
                 )
 
-                # Check feasibility: all margins (if defined) must be >= 0 dB
-                violating: list[str] = []
-                for cid, summary in summaries.items():
-                    if (
-                        summary.worst_in_band_margin_db is not None
-                        and summary.worst_in_band_margin_db < 0.0
+                # Compute global worst margin across all configs
+                global_worst_margin: Optional[float] = None
+                for summary in summaries.values():
+                    for m in (
+                        summary.worst_in_band_margin_db,
+                        summary.worst_out_band_margin_db,
                     ):
-                        violating.append(cid)
-                    if (
-                        summary.worst_out_band_margin_db is not None
-                        and summary.worst_out_band_margin_db < 0.0
-                    ):
-                        violating.append(cid)
+                        if m is None:
+                            continue
+                        if global_worst_margin is None or m < global_worst_margin:
+                            global_worst_margin = m
 
-                if violating:
-                    return  # infeasible combination
-
-                # Feasible: evaluate LO reuse score
+                # Number of distinct LO frequencies used
                 n_lo1 = len(used_lo1)
                 n_lo2 = len(used_lo2)
                 score = (n_lo1, n_lo2)
-                if best_score is None or score < best_score:
-                    best_score = score
-                    best_lo_plans = list(current)
-                    best_bank_design = bank_design
-                    best_spur_results = spur_results
-                    best_summaries = summaries
+
+                feasible = (
+                    global_worst_margin is None
+                    or global_worst_margin >= 0.0
+                )
+
+                res = SearchResult(
+                    lo_plans=list(current),
+                    if2_bank_design=bank_design,
+                    spur_results=spur_results,
+                    summaries=summaries,
+                    feasible=feasible,
+                    worst_margin_db=global_worst_margin,
+                )
+
+                if feasible:
+                    # Lexicographic minimization of LO retunes among feasible solutions
+                    if best_feasible_score is None or score < best_feasible_score:
+                        best_feasible_score = score
+                        best_feasible_margin = global_worst_margin
+                        best_feasible = res
+                else:
+                    # For infeasible, we prefer *less negative* (closer to 0) margin.
+                    if global_worst_margin is not None:
+                        if (
+                            best_infeasible_margin is None
+                            or global_worst_margin > best_infeasible_margin
+                            or (
+                                global_worst_margin == best_infeasible_margin
+                                and (
+                                    best_infeasible_score is None
+                                    or score < best_infeasible_score
+                                )
+                            )
+                        ):
+                            best_infeasible_margin = global_worst_margin
+                            best_infeasible_score = score
+                            best_infeasible = res
+
                 return
 
             cfg_id = ordered_cfg_ids[idx]
@@ -282,9 +339,9 @@ class Planner:
 
                 # If we already have a feasible solution, use LO reuse score
                 # to prune branches that cannot beat it.
-                if best_score is not None:
+                if best_feasible_score is not None:
                     partial_score = (len(new_used_lo1), len(new_used_lo2))
-                    if partial_score > best_score:
+                    if partial_score > best_feasible_score:
                         continue
 
                 current.append(cand)
@@ -295,13 +352,17 @@ class Planner:
                     break
 
         dfs(0, [], set(), set())
-        
+
         self.progress.end()
 
-        if best_lo_plans is None or best_bank_design is None:
-            return None
+        if best_feasible is not None:
+            return best_feasible
+        if best_infeasible is not None:
+            return best_infeasible
 
-        return best_lo_plans, best_bank_design, best_spur_results, best_summaries
+        # Nothing evaluated successfully at all (e.g. zero candidates)
+        return None
+
 
     def _evaluate_for_bank_design(
         self,
@@ -411,10 +472,8 @@ class Planner:
         min_f = cfg.filters.if2_constraints.min_filters
         max_f = cfg.filters.if2_constraints.max_filters
 
-        best_lo_plans: Optional[List[LOPlanCandidate]] = None
-        best_bank_design: Optional[IF2BankDesignResult] = None
-        best_spur_results: List[SpurResult] = []
-        best_summaries: Dict[str, ConfigSpurSummary] = {}
+        best_feasible_result: Optional[SearchResult] = None
+        best_infeasible_result: Optional[SearchResult] = None
 
         # 3) Sweep IF2 filter count (lexicographic: min filters first)
         for n_filters in range(min_f, max_f + 1):
@@ -426,26 +485,48 @@ class Planner:
             if search_res is None:
                 continue
 
-            lo_plans, bank_design, spur_results, summaries = search_res
-            best_lo_plans = lo_plans
-            best_bank_design = bank_design
-            best_spur_results = spur_results
-            best_summaries = summaries
-            # First n_filters with any feasible solution is the lexicographic
-            # optimum in terms of IF2 filter count; within this n_filters,
-            # LO retune counts have already been minimized.
-            break
+            if search_res.feasible:
+                # First n_filters with any feasible solution is the lexicographic
+                # optimum in terms of IF2 filter count; within this n_filters,
+                # LO retune counts have already been minimized in _search_lo_plans_for_filter_count.
+                best_feasible_result = search_res
+                break
+            else:
+                # Track best infeasible across all filter counts
+                if best_infeasible_result is None:
+                    best_infeasible_result = search_res
+                else:
+                    def _margin(res: SearchResult) -> float:
+                        # Larger margin is "better" (less violation).
+                        # None is treated as very negative here.
+                        return res.worst_margin_db if res.worst_margin_db is not None else float("-inf")
 
-        if best_bank_design is None or best_lo_plans is None:
+                    if _margin(search_res) > _margin(best_infeasible_result):
+                        best_infeasible_result = search_res
+
+        final_res = best_feasible_result or best_infeasible_result
+
+        if final_res is None:
+            # This should be very rare: no combinations evaluated at all.
             raise RuntimeError(
+                "No IF2 bank / LO plan combinations could be evaluated. "
+                "Check that LO ranges, mixer ranges, and RF band definitions "
+                "allow at least one mapping."
+            )
+
+        if not final_res.feasible:
+            logger.warning(
                 "No feasible IF2 bank / LO plan combination found within "
-                "[min_filters, max_filters] that satisfies spur limits for all configurations."
+                "[min_filters, max_filters] that satisfies spur limits for all "
+                "configurations; returning least-bad combination with worst "
+                "spur margin %.1f dB.",
+                final_res.worst_margin_db if final_res.worst_margin_db is not None else float("nan"),
             )
 
         return PlannerResult(
             system_config=cfg,
-            lo_plans=best_lo_plans,
-            if2_bank_design=best_bank_design,
-            spur_results=best_spur_results,
-            summaries=best_summaries,
+            lo_plans=final_res.lo_plans,
+            if2_bank_design=final_res.if2_bank_design,
+            spur_results=final_res.spur_results,
+            summaries=final_res.summaries,
         )

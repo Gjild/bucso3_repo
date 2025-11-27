@@ -1,0 +1,46 @@
+{
+  "description": "Ka-band dual-conversion BUC planner for LTC5553 + ADMV1550 (converted from KaBUC_LTC5553_ADMV1550 config)",
+  "n_rf_configurations": 3,
+  "if1_band": {
+    "start": 950000000.0,
+    "stop": 2450000000.0
+  },
+  "rf_band": {
+    "start": 27500000000.0,
+    "stop": 31000000000.0
+  },
+  "non_inverting_mapping_required": true,
+  "mixer1": {
+    "name": "LTC5553_MXR1",
+    "enforce_envelope_completeness": false,
+    "unspecified_floor_dbc": null
+  },
+  "mixer2": {
+    "name": "ADMV1550_MXR2",
+    "enforce_envelope_completeness": false,
+    "unspecified_floor_dbc": null
+  },
+  "grids": {
+    "if1_grid_step_hz": 50000000.0,
+    "spur_integration_step_hz": 5000000.0,
+    "max_if1_harmonic_order": 3,
+    "coarse_spur_margin_min_db": -20.0,
+    "mixer2_if2_focus_margin_hz": 0.0,
+    "use_numba": true
+  },
+  "spur_limits": {
+    "in_band_limit_dbc": -50.0,
+    "out_of_band_limit_dbc": -50.0,
+    "mask_csv": null,
+    "mask_eval_mode": "center"
+  },
+  "spur_floor_usage": {
+    "total_spurs": 5596,
+    "spurs_with_unspecified_floor": 0
+  },
+  "modelling_notes": {
+    "lo1_lo2_cross_coupling_modelled": false,
+    "planning_grade_only": true,
+    "wideband_spur_approximation": true
+  }
+}

@@ -13,6 +13,39 @@ from .los import LOPlanCandidate
 from .spur_engine import SpurResult, ConfigSpurSummary
 
 
+def _to_python_scalar(obj):
+    """
+    Recursively convert objects to JSON-serializable plain Python types.
+
+    - numpy scalar types (np.float64, np.int64, np.bool_) -> Python float/int/bool
+    - numpy arrays -> nested lists of Python scalars
+    - dict / list / tuple -> recursively normalized
+    """
+    import numpy as _np
+
+    # Already a simple type
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+
+    # NumPy scalar (includes np.bool_, np.float64, etc.)
+    if isinstance(obj, _np.generic):
+        return obj.item()
+
+    # NumPy array
+    if isinstance(obj, _np.ndarray):
+        return [_to_python_scalar(v) for v in obj.tolist()]
+
+    # Containers
+    if isinstance(obj, dict):
+        return {k: _to_python_scalar(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_python_scalar(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_to_python_scalar(v) for v in obj)
+
+    # Fallback: leave it as-is, json will complain if it still doesn't like it
+    return obj
+
 def write_lo_plan_policy(
     path: str | Path,
     cfg: SystemConfig,
@@ -140,6 +173,10 @@ def write_spur_ledger(
                     "input_band_name": r.input_band_name,
                     "used_unspecified_floor": r.used_unspecified_floor,
                 }
+
+                # Normalize to plain Python types before JSON encoding
+                rec = _to_python_scalar(rec)
+
                 f.write(json.dumps(rec) + "\n")
 				
 def write_if2_bank_description(

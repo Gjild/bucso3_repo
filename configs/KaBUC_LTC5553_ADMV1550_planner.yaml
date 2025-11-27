@@ -75,150 +75,151 @@ mixer1:
   # Spur table from LTC5553 spur_list.
   # All entries are referenced to the desired Mixer1 product and are
   # assumed valid over the full mixer ranges above.
+  # f_center = m * f_lo + n * f_in_center
   spur_table:
-    # m = 0 row
-    - m: 0
-      n: 1
+    # n = 0 row
+    - n: 0
+      m: 1
       level_dbc: -51.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 0
-      n: 2
+    - n: 0
+      m: 2
       level_dbc: -58.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 0
-      n: 3
+    - n: 0
+      m: 3
       level_dbc: -75.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 0
-      n: 4
+    - n: 0
+      m: 4
       level_dbc: -75.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
 
-    # m = 1 row (skip [1,1] desired fundamental)
-    - m: 1
-      n: 0
+    # n = 1 row (skip [1,1] desired fundamental)
+    - n: 1
+      m: 0
       level_dbc: -24.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 1
-      n: 2
+    - n: 1
+      m: 2
       level_dbc: -64.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 1
-      n: 3
+    - n: 1
+      m: 3
       level_dbc: -72.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 1
-      n: 4
+    - n: 1
+      m: 4
       level_dbc: -75.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
 
-    # m = 2 row
-    - m: 2
-      n: 0
+    # n = 2 row
+    - n: 2
+      m: 0
       level_dbc: -15.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 2
-      n: 1
+    - n: 2
+      m: 1
       level_dbc: -42.0   # CRITICAL VALUE
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 2
-      n: 2
+    - n: 2
+      m: 2
       level_dbc: -58.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 2
-      n: 3
+    - n: 2
+      m: 3
       level_dbc: -72.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 2
-      n: 4
+    - n: 2
+      m: 4
       level_dbc: -73.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
 
-    # m = 3 row
-    - m: 3
-      n: 0
+    # n = 3 row
+    - n: 3
+      m: 0
       level_dbc: -16.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 3
-      n: 1
+    - n: 3
+      m: 1
       level_dbc: -13.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 3
-      n: 2
+    - n: 3
+      m: 2
       level_dbc: -61.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 3
-      n: 3
+    - n: 3
+      m: 3
       level_dbc: -71.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 3
-      n: 4
+    - n: 3
+      m: 4
       level_dbc: -73.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
 
-    # m = 4 row
-    - m: 4
-      n: 0
+    # n = 4 row
+    - n: 4
+      m: 0
       level_dbc: -20.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 4
-      n: 1
+    - n: 4
+      m: 1
       level_dbc: -53.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 4
-      n: 2
+    - n: 4
+      m: 2
       level_dbc: -62.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 4
-      n: 3
+    - n: 4
+      m: 3
       level_dbc: -75.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
       rf_range: {start: 4.0e9, stop: 20.0e9}
-    - m: 4
-      n: 4
+    - n: 4
+      m: 4
       level_dbc: -75.0
       if_range: {start: 0.5e9, stop: 9.0e9}
       lo_range: {start: 3.0e9, stop: 15.0e9}
@@ -261,149 +262,149 @@ mixer2:
   desired_n: 1
 
   spur_table:
-    # m = 0 row
-    - m: 0
-      n: 1
+    # n = 0 row
+    - n: 0
+      m: 1
       level_dbc: -55.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 0
-      n: 2
+    - n: 0
+      m: 2
       level_dbc: -89.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 0
-      n: 3
+    - n: 0
+      m: 3
       level_dbc: -89.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 0
-      n: 4
+    - n: 0
+      m: 4
       level_dbc: -87.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
 
-    # m = 1 row (skip [1,1] desired fundamental)
-    - m: 1
-      n: 0
+    # n = 1 row (skip [1,1] desired fundamental)
+    - n: 1
+      m: 0
       level_dbc: -5.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 1
-      n: 2
+    - n: 1
+      m: 2
       level_dbc: -46.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 1
-      n: 3
+    - n: 1
+      m: 3
       level_dbc: -73.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 1
-      n: 4
+    - n: 1
+      m: 4
       level_dbc: -74.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
 
-    # m = 2 row
-    - m: 2
-      n: 0
+    # n = 2 row
+    - n: 2
+      m: 0
       level_dbc: -3.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 2
-      n: 1
+    - n: 2
+      m: 1
       level_dbc: -41.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 2
-      n: 2
+    - n: 2
+      m: 2
       level_dbc: -61.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 2
-      n: 3
+    - n: 2
+      m: 3
       level_dbc: -63.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 2
-      n: 4
+    - n: 2
+      m: 4
       level_dbc: -60.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
 
-    # m = 3 row
-    - m: 3
-      n: 0
+    # n = 3 row
+    - n: 3
+      m: 0
       level_dbc: -3.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 3
-      n: 1
+    - n: 3
+      m: 1
       level_dbc: -11.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 3
-      n: 2
+    - n: 3
+      m: 2
       level_dbc: -50.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 3
-      n: 3
+    - n: 3
+      m: 3
       level_dbc: -65.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 3
-      n: 4
+    - n: 3
+      m: 4
       level_dbc: -65.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
 
-    # m = 4 row
-    - m: 4
-      n: 0
+    # n = 4 row
+    - n: 4
+      m: 0
       level_dbc: -3.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 4
-      n: 1
+    - n: 4
+      m: 1
       level_dbc: -11.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 4
-      n: 2
+    - n: 4
+      m: 2
       level_dbc: -51.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 4
-      n: 3
+    - n: 4
+      m: 3
       level_dbc: -65.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
       rf_range: {start: 20.0e9, stop: 50.0e9}
-    - m: 4
-      n: 4
+    - n: 4
+      m: 4
       level_dbc: -65.0
       if_range: {start: 0.0, stop: 20.0e9}
       lo_range: {start: 15.0e9, stop: 32.0e9}
@@ -467,18 +468,18 @@ lo2:
 filters:
   if2_constraints:
     # Let the optimizer pick between 1..4 IF2 filters
-    min_filters: 1
+    min_filters: 3
     max_filters: 4
 
     # IF2 center-frequency range from legacy if2_model.center_range_hz
     fc_range:
-      start: 4.0e9
+      start: 3.0e9
       stop: 20.0e9
 
     # IF2 BW range from legacy if2_model min/max_bw_hz
     bw_range:
       start: 1.5e9
-      stop: 2.0e9
+      stop: 3.0e9
 
     # Slope range (dB/decade). Legacy rolloff was 100 dB/dec.
     # Allow a reasonably steep negative range.
@@ -496,8 +497,8 @@ filters:
 
 spur_limits:
   # From masks.inband / masks.outofband default_dbc
-  in_band_limit_dbc: -60.0
-  out_of_band_limit_dbc: -60.0
+  in_band_limit_dbc: -50.0
+  out_of_band_limit_dbc: -50.0
 
   # No frequency-dependent spur mask in the legacy config
   mask: null
@@ -534,14 +535,14 @@ grids:
   max_if2_bank_candidates: 50
 
   # Coarse-pruning: LO plans whose coarse spur margin << 0 dB get dropped
-  coarse_spur_margin_min_db: -10.0
+  coarse_spur_margin_min_db: -20.0
 
   # Mixer2 spur generation focus around desired IF2 band (0 => off)
   mixer2_if2_focus_margin_hz: 0.0
 
   # Parallel execution & Numba
   parallel: true
-  use_numba: false
+  use_numba: true
 
   # Ensure we keep at least this many LO candidates after coarse pruning
   min_lo_candidates_per_rf_after_coarse: 2

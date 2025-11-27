@@ -43,7 +43,7 @@ def main(argv=None) -> None:
     cfg = load_config(args.config)
     
     progress = None if args.no_progress else ProgressReporter()
-    planner = Planner(cfg)
+    planner = Planner(cfg, progress=progress)
     result = planner.run()
 
     out_dir = Path(args.out_dir)

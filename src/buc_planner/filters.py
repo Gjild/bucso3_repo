@@ -39,7 +39,7 @@ class IF2Filter:
             # normalize offset to band edge
             offset = np.abs(f[out_band] - self.fc) / half_bw
             offset[offset <= 0] = 1e-12
-            att[out_band] = self.slope_db_per_decade * np.log10(offset)
+            att[out_band] = -self.slope_db_per_decade * np.log10(offset)
 
         return att
 
