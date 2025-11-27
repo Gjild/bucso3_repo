@@ -14,6 +14,7 @@ from .outputs import (
     write_run_metadata,
 )
 from .plotting import plot_if2_bank
+from .progress import ProgressReporter
 
 
 def main(argv=None) -> None:
@@ -32,9 +33,16 @@ def main(argv=None) -> None:
         action="store_true",
         help="Disable IF2 bank plot generation",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable textual progress indicators",
+    )
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
+    
+    progress = None if args.no_progress else ProgressReporter()
     planner = Planner(cfg)
     result = planner.run()
 

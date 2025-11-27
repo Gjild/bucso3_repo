@@ -5,20 +5,52 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Literal, Union
+import warnings
 
 import yaml  # planning-grade: assume PyYAML available
+import re
 
 
 Freq = float  # Hz (or consistent unit across config)
 dB = float
 dBc = float
 
+_NUMERIC_SCALAR_RE = re.compile(
+    r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$'
+)
+
+def _coerce_numeric_scalars(obj):
+    """
+    Recursively walk a YAML-loaded structure and convert
+    numeric-looking strings (incl. 0.5e9, 950.0e6) to floats.
+
+    Dict *keys* are left untouched; only values are coerced.
+    """
+    if isinstance(obj, dict):
+        return {k: _coerce_numeric_scalars(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_coerce_numeric_scalars(v) for v in obj]
+    elif isinstance(obj, str):
+        s = obj.strip()
+        if _NUMERIC_SCALAR_RE.match(s):
+            try:
+                return float(s)
+            except ValueError:
+                return obj
+        return obj
+    else:
+        return obj
 
 @dataclass
 class Range:
     """Closed interval [start, stop]. Units consistent with Freq."""
     start: Freq
     stop: Freq
+    
+    def __post_init__(self):
+        # Coerce to float in case YAML gave us strings
+        self.start = float(self.start)
+        self.stop = float(self.stop)
 
     def contains(self, f: Freq) -> bool:
         return self.start <= f <= self.stop
@@ -167,6 +199,10 @@ class GridsAndPerformanceConfig:
     mixer2_if2_focus_margin_hz: Freq = 0.0
     parallel: bool = True
     use_numba: bool = False  # allows toggling JIT
+    # minimum number of LO candidates to keep after coarse pruning.
+    # If coarse pruning would leave fewer than this (including zero),
+    # we re-inject the best candidates up to this count.
+    min_lo_candidates_per_rf_after_coarse: int = 1
 
 
 
@@ -203,10 +239,12 @@ class SystemConfig:
 def _load_yaml_or_json(path: Path) -> dict:
     text = path.read_text()
     if path.suffix.lower() in {".yaml", ".yml"}:
-        return yaml.safe_load(text)
+        raw = yaml.safe_load(text)
     else:
-        return json.loads(text)
+        raw = json.loads(text)
 
+    # Fix PyYAML’s limited float parsing (e.g. 950.0e6 -> float)
+    return _coerce_numeric_scalars(raw)
 
 def load_config(path: Union[str, Path]) -> SystemConfig:
     """
@@ -329,7 +367,42 @@ def load_config(path: Union[str, Path]) -> SystemConfig:
             mixer2_if2_focus_margin_hz=d.get("mixer2_if2_focus_margin_hz", 0.0),
             parallel=d.get("parallel", True),
             use_numba=d.get("use_numba", False),
+            min_lo_candidates_per_rf_after_coarse=d.get(
+            "min_lo_candidates_per_rf_after_coarse", 1
+            )
         )
+        
+    def _sanity_check_mixer_spur_config(m: MixerConfig) -> None:
+        """Emit warnings for common spur-table pitfalls."""
+        env = m.spur_envelope
+        desired = (m.desired_m, m.desired_n)
+        in_table = any(e.m == desired[0] and e.n == desired[1] for e in m.spur_table)
+        within_env = (abs(desired[0]) <= env.m_max) and (abs(desired[1]) <= env.n_max)
+
+        if in_table:
+            warnings.warn(
+                f"Mixer '{m.name}': spur_table contains the desired fundamental "
+                f"(m={desired[0]}, n={desired[1]}). This entry will be ignored "
+                "as a spur; ensure spur levels are defined relative to this "
+                "desired product.",
+                RuntimeWarning,
+            )
+
+        if env.unspecified_floor_dbc is not None and within_env and not in_table:
+            warnings.warn(
+                f"Mixer '{m.name}': spur_envelope covers the desired fundamental "
+                f"(m={desired[0]}, n={desired[1]}) and unspecified_floor_dbc="
+                f"{env.unspecified_floor_dbc:.1f} dBc is set, but there is no "
+                "explicit spur_table entry for this family. The tool will treat "
+                "this family as the desired path (not as a spur), but the "
+                "envelope configuration may be misleading.",
+                RuntimeWarning,
+            )
+            
+    mixer1_cfg = r_mixer(raw["mixer1"])
+    mixer2_cfg = r_mixer(raw["mixer2"])
+    _sanity_check_mixer_spur_config(mixer1_cfg)
+    _sanity_check_mixer_spur_config(mixer2_cfg)
 
     return SystemConfig(
         if1_band=r_rng(raw["if1_band"]),

@@ -5,9 +5,13 @@ from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
 import numpy as np
+import logging
 
 from .config_models import LOSynthConfig, Range, RfConfiguration, SystemConfig, Freq
 
+logger = logging.getLogger(__name__)
+
+_MAX_LO_GRID_POINTS = 20000  # simple safety cap
 
 @dataclass(frozen=True)
 class LOSignCombination:
@@ -36,47 +40,41 @@ class LOPlanCandidate:
 
 
 def _enumerate_lo_grid(lo_cfg: LOSynthConfig) -> np.ndarray:
-    """Enumerate LO grid from freq_range with step size."""
+    """Enumerate LO grid from freq_range with step size.
+
+    A simple guard is applied to avoid generating excessively large grids:
+    if the number of points would exceed _MAX_LO_GRID_POINTS, the grid is
+    truncated and a warning is logged.
+    """
     start = lo_cfg.freq_range.start
     stop = lo_cfg.freq_range.stop
     step = lo_cfg.grid_step
-    n_steps = int(np.floor((stop - start) / step)) + 1
+
+    if step <= 0.0:
+        raise ValueError(
+            f"LO synth '{lo_cfg.name}': grid_step must be > 0 (got {step})."
+        )
+
+    span = stop - start
+    if span <= 0.0:
+        return np.array([start], dtype=float)
+
+    n_steps = int(np.floor(span / step)) + 1
+    if n_steps > _MAX_LO_GRID_POINTS:
+        logger.warning(
+            "LO synth '%s': grid between %.6g and %.6g Hz with step %.6g Hz "
+            "would create %d points; truncating to %d points. Consider "
+            "narrowing freq_range or increasing grid_step.",
+            lo_cfg.name,
+            start,
+            stop,
+            step,
+            n_steps,
+            _MAX_LO_GRID_POINTS,
+        )
+        n_steps = _MAX_LO_GRID_POINTS
+
     return start + np.arange(n_steps) * step
-
-
-def derive_if2_band_for_lo1(
-    if1_band: Range,
-    lo1_freq: Freq,
-    sign1: int,
-) -> Range:
-    """
-    IF2 = LO1 + sign1 * IF1, where IF1 in [if1_lo, if1_hi].
-    """
-    if sign1 > 0:
-        if2_lo = lo1_freq + sign1 * if1_band.start
-        if2_hi = lo1_freq + sign1 * if1_band.stop
-    else:
-        # sign1 = -1 -> IF2 = LO1 - IF1, and if1 increases => IF2 decreases
-        # so band is [LO1 - IF1_hi, LO1 - IF1_lo]
-        if2_lo = lo1_freq - if1_band.stop
-        if2_hi = lo1_freq - if1_band.start
-    return Range(start=if2_lo, stop=if2_hi)
-
-
-def derive_rf_band_for_lo2(
-    if2_band: Range,
-    lo2_freq: Freq,
-    sign2: int,
-) -> Range:
-    if sign2 > 0:
-        rf_lo = lo2_freq + sign2 * if2_band.start
-        rf_hi = lo2_freq + sign2 * if2_band.stop
-    else:
-        # RF = LO2 - IF2
-        rf_lo = lo2_freq - if2_band.stop
-        rf_hi = lo2_freq - if2_band.start
-    return Range(start=rf_lo, stop=rf_hi)
-
 
 def generate_lo_plan_candidates_for_config(
     cfg: SystemConfig,

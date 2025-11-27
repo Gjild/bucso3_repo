@@ -75,6 +75,11 @@ class MixerWidebandSpurBand:
     f_stop: Freq
     spur_level_rel_if1_dbc: dBc  # relative to IF1 fundamental integrated power
     used_unspecified_floor: bool = False
+    
+    @property
+    def bandwidth(self) -> Freq:
+        """Convenience helper: width of the spur band."""
+        return self.f_stop - self.f_start
 
 
 def resolve_spur_families_for_tones(
@@ -95,12 +100,16 @@ def resolve_spur_families_for_tones(
     floor_pairs: Set[Tuple[int, int]] = set()
 
     env = mixer.spur_envelope
+    desired_pair = (mixer.desired_m, mixer.desired_n)
     existing_pairs = {(e.m, e.n) for e in table_entries}
     missing: List[Tuple[int, int]] = []
     for m in range(-env.m_max, env.m_max + 1):
         for n in range(-env.n_max, env.n_max + 1):
             if n == 0:
                 continue  # n != 0 per spec
+            # Do not require the desired path to be present as a spur family
+            if (m, n) == desired_pair:
+                continue
             if (m, n) in existing_pairs:
                 continue
             missing.append((m, n))
@@ -156,6 +165,8 @@ def resolve_spur_families_for_tones(
 
     # 2) Resolve against LO tones (enforcing LO range)
     for entry in table_entries:
+        if (entry.m, entry.n) == desired_pair:
+            continue
         lt = entry.lo_tone_type or "fundamental"
         used_floor = (entry.m, entry.n) in floor_pairs
 

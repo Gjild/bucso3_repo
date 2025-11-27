@@ -1,0 +1,557 @@
+description: "Ka-band dual-conversion BUC planner for LTC5553 + ADMV1550 (converted from KaBUC_LTC5553_ADMV1550 config)"
+
+# -------------------------------------------------------------------
+#  System bands & RF configurations
+# -------------------------------------------------------------------
+
+if1_band:
+  start: 950.0e6
+  stop: 2450.0e6
+
+rf_band:
+  start: 27.5e9
+  stop: 31.0e9
+
+# Each RF configuration uses the full IF1 band (1.5 GHz).
+# Two overlapping 1.5 GHz RF channels covering 27.5–31 GHz.
+# if1_subband: omitted => use global IF1 band
+rf_configurations:
+  - config_id: "rf_28.25GHz"
+    rf_center: 28.25e9        # 27.5–29.0 GHz
+    rf_bandwidth: 1.5e9
+
+  - config_id: "rf_29.25GHz"
+    rf_center: 29.25e9        # 28.5–30 GHz
+    rf_bandwidth: 1.5e9
+    
+  - config_id: "rf_30.25GHz"
+    rf_center: 30.25e9        # 29.5–31 GHz
+    rf_bandwidth: 1.5e9
+
+# Enforce non-inverting IF1 -> RF mapping for desired path
+non_inverting_mapping_required: true
+
+# -------------------------------------------------------------------
+#  Mixer 1: LTC5553 (IF1 -> IF2)
+# -------------------------------------------------------------------
+
+mixer1:
+  name: "LTC5553_MXR1"
+
+  # Spur envelope: we only use the explicit table below and ignore
+  # (m, n) outside it (no default floor applied).
+  spur_envelope:
+    m_max: 4
+    n_max: 4
+    enforce_envelope_completeness: false
+    unspecified_floor_dbc: null
+
+  # Valid operating ranges
+  ranges:
+    # IF port (IF1 side): LTC5553 IF range ≈ 0.5–9 GHz
+    if_range:
+      start: 500e6
+      stop: 9.0e9
+
+    # LO port (LO1): constrained to 3–15 GHz usable region
+    lo_range:
+      start: 3.0e9
+      stop: 15.0e9
+
+    # RF port (IF2 node): planning range matching IF2 model
+    rf_range:
+      start: 4.0e9
+      stop: 20.0e9
+
+  # Isolation terms, relative to desired Mixer1 output
+  isolation:
+    lo_to_rf_dbc: -25.0
+    if_to_rf_dbc: -40.0
+
+  # Desired fundamental: m=+1, n=1 (LO1 + IF1)
+  desired_m: 1
+  desired_n: 1
+
+  # Spur table from LTC5553 spur_list.
+  # All entries are referenced to the desired Mixer1 product and are
+  # assumed valid over the full mixer ranges above.
+  spur_table:
+    # m = 0 row
+    - m: 0
+      n: 1
+      level_dbc: -51.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 0
+      n: 2
+      level_dbc: -58.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 0
+      n: 3
+      level_dbc: -75.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 0
+      n: 4
+      level_dbc: -75.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+
+    # m = 1 row (skip [1,1] desired fundamental)
+    - m: 1
+      n: 0
+      level_dbc: -24.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 1
+      n: 2
+      level_dbc: -64.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 1
+      n: 3
+      level_dbc: -72.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 1
+      n: 4
+      level_dbc: -75.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+
+    # m = 2 row
+    - m: 2
+      n: 0
+      level_dbc: -15.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 2
+      n: 1
+      level_dbc: -42.0   # CRITICAL VALUE
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 2
+      n: 2
+      level_dbc: -58.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 2
+      n: 3
+      level_dbc: -72.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 2
+      n: 4
+      level_dbc: -73.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+
+    # m = 3 row
+    - m: 3
+      n: 0
+      level_dbc: -16.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 3
+      n: 1
+      level_dbc: -13.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 3
+      n: 2
+      level_dbc: -61.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 3
+      n: 3
+      level_dbc: -71.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 3
+      n: 4
+      level_dbc: -73.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+
+    # m = 4 row
+    - m: 4
+      n: 0
+      level_dbc: -20.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 4
+      n: 1
+      level_dbc: -53.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 4
+      n: 2
+      level_dbc: -62.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 4
+      n: 3
+      level_dbc: -75.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+    - m: 4
+      n: 4
+      level_dbc: -75.0
+      if_range: {start: 0.5e9, stop: 9.0e9}
+      lo_range: {start: 3.0e9, stop: 15.0e9}
+      rf_range: {start: 4.0e9, stop: 20.0e9}
+
+# -------------------------------------------------------------------
+#  Mixer 2: ADMV1550 (IF2 -> RF)
+# -------------------------------------------------------------------
+
+mixer2:
+  name: "ADMV1550_MXR2"
+
+  spur_envelope:
+    m_max: 4
+    n_max: 4
+    enforce_envelope_completeness: false
+    unspecified_floor_dbc: null
+
+  ranges:
+    # IF port (IF2): ADMV IF 0–20 GHz
+    if_range:
+      start: 0.0
+      stop: 20.0e9
+
+    # LO port (LO2)
+    lo_range:
+      start: 15.0e9
+      stop: 32.0e9
+
+    # RF output: cover Ka band + nearby spur region
+    rf_range:
+      start: 20.0e9
+      stop: 50.0e9
+
+  isolation:
+    lo_to_rf_dbc: -35.0
+    if_to_rf_dbc: -45.0
+
+  desired_m: 1
+  desired_n: 1
+
+  spur_table:
+    # m = 0 row
+    - m: 0
+      n: 1
+      level_dbc: -55.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 0
+      n: 2
+      level_dbc: -89.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 0
+      n: 3
+      level_dbc: -89.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 0
+      n: 4
+      level_dbc: -87.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+
+    # m = 1 row (skip [1,1] desired fundamental)
+    - m: 1
+      n: 0
+      level_dbc: -5.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 1
+      n: 2
+      level_dbc: -46.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 1
+      n: 3
+      level_dbc: -73.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 1
+      n: 4
+      level_dbc: -74.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+
+    # m = 2 row
+    - m: 2
+      n: 0
+      level_dbc: -3.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 2
+      n: 1
+      level_dbc: -41.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 2
+      n: 2
+      level_dbc: -61.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 2
+      n: 3
+      level_dbc: -63.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 2
+      n: 4
+      level_dbc: -60.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+
+    # m = 3 row
+    - m: 3
+      n: 0
+      level_dbc: -3.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 3
+      n: 1
+      level_dbc: -11.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 3
+      n: 2
+      level_dbc: -50.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 3
+      n: 3
+      level_dbc: -65.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 3
+      n: 4
+      level_dbc: -65.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+
+    # m = 4 row
+    - m: 4
+      n: 0
+      level_dbc: -3.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 4
+      n: 1
+      level_dbc: -11.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 4
+      n: 2
+      level_dbc: -51.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 4
+      n: 3
+      level_dbc: -65.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+    - m: 4
+      n: 4
+      level_dbc: -65.0
+      if_range: {start: 0.0, stop: 20.0e9}
+      lo_range: {start: 15.0e9, stop: 32.0e9}
+      rf_range: {start: 20.0e9, stop: 50.0e9}
+
+# -------------------------------------------------------------------
+#  LO Synthesizers (simplified from legacy LO models)
+# -------------------------------------------------------------------
+
+lo1:
+  name: "LMX2594_LO1"
+  # Restrict to practical band used with Mixer1
+  freq_range:
+    start: 3.0e9
+    stop: 15.0e9
+  # Grid step: coarser than legacy 1 kHz to avoid 20k-point truncation
+  grid_step: 1.0e6   # 1 MHz resolution
+
+  # Single nominal PFD for PLL spur modelling
+  pfd_frequency: 100.0e6
+
+  # Harmonics from legacy config (mode 'fracN')
+  harmonics:
+    - order: 2
+      level_dbc: -20.0
+    - order: 3
+      level_dbc: -30.0
+
+  # Simple PLL spur model derived from legacy pfd_spurs_at_output
+  pll_spurs:
+    - offset_multiple: 1
+      level_dbc: -90.0
+    - offset_multiple: 2
+      level_dbc: -90.0
+
+lo2:
+  name: "ADF4371_LO2"
+  freq_range:
+    start: 15.0e9
+    stop: 32.0e9
+  grid_step: 1.0e6   # 1 MHz resolution
+
+  pfd_frequency: 125.0e6
+
+  harmonics:
+    - order: 2
+      level_dbc: -30.0
+    - order: 3
+      level_dbc: -30.0
+
+  pll_spurs:
+    - offset_multiple: 1
+      level_dbc: -90.0
+    - offset_multiple: 2
+      level_dbc: -90.0
+
+# -------------------------------------------------------------------
+#  IF2 & RF Filters
+# -------------------------------------------------------------------
+
+filters:
+  if2_constraints:
+    # Let the optimizer pick between 1..4 IF2 filters
+    min_filters: 1
+    max_filters: 4
+
+    # IF2 center-frequency range from legacy if2_model.center_range_hz
+    fc_range:
+      start: 4.0e9
+      stop: 20.0e9
+
+    # IF2 BW range from legacy if2_model min/max_bw_hz
+    bw_range:
+      start: 1.5e9
+      stop: 2.0e9
+
+    # Slope range (dB/decade). Legacy rolloff was 100 dB/dec.
+    # Allow a reasonably steep negative range.
+    slope_range: [-200.0, -20.0]
+
+    # Feasibility margin around desired IF2 band (Hz)
+    feasibility_margin_hz: 50.0e6
+
+  # Legacy RF filter CSV
+  rf_bpf_csv_path: "configs\\RF_S21_28to31GHz.csv"
+
+# -------------------------------------------------------------------
+#  Spur limits & masks
+# -------------------------------------------------------------------
+
+spur_limits:
+  # From masks.inband / masks.outofband default_dbc
+  in_band_limit_dbc: -60.0
+  out_of_band_limit_dbc: -60.0
+
+  # No frequency-dependent spur mask in the legacy config
+  mask: null
+
+  # Evaluate out-of-band spurs over DC–50 GHz
+  out_of_band_range:
+    start: 0.0
+    stop: 50.0e9
+
+  # For a wideband spur vs. mask we use mask at center frequency
+  mask_eval_mode: "center"
+
+# -------------------------------------------------------------------
+#  Grids & performance knobs
+# -------------------------------------------------------------------
+
+grids:
+  # IF1 sweep grid over 950–2450 MHz (from legacy if1_center_step_hz)
+  if1_grid_step_hz: 50.0e6
+
+  # Spur integration step (RBW-ish) – coarser than 500 kHz for speed
+  spur_integration_step_hz: 5.0e6
+
+  # IF1 harmonics: use up to 3rd (legacy if1_model)
+  max_if1_harmonic_order: 3
+
+  # Ignore spurs below this level at early stages
+  min_spur_level_considered_dbc: -100.0
+
+  # Limit LO1/LO2 candidates per RF config (coarse enumeration)
+  max_lo_candidates_per_rf: 50
+
+  # Limit IF2 bank candidates per filter-count during search
+  max_if2_bank_candidates: 50
+
+  # Coarse-pruning: LO plans whose coarse spur margin << 0 dB get dropped
+  coarse_spur_margin_min_db: -10.0
+
+  # Mixer2 spur generation focus around desired IF2 band (0 => off)
+  mixer2_if2_focus_margin_hz: 0.0
+
+  # Parallel execution & Numba
+  parallel: true
+  use_numba: false
+
+  # Ensure we keep at least this many LO candidates after coarse pruning
+  min_lo_candidates_per_rf_after_coarse: 2
+
+# -------------------------------------------------------------------
+#  IF1 harmonics (integrated levels vs IF1 fundamental)
+# -------------------------------------------------------------------
+
+# From legacy if1_model.harmonics (k=2 at -30 dBc, k=3 at -40 dBc).
+# Fundamental (k=1) is implicitly 0 dBc in this tool.
+if1_harmonics_dbc:
+  "2": -30.0
+  "3": -40.0

@@ -8,5 +8,16 @@ dependencies = [
     "matplotlib>=3.10.7",
     "numba>=0.62.1",
     "numpy>=2.3.5",
+    "pytest>=9.0.1",
     "pyyaml>=6.0.3",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

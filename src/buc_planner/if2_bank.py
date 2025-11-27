@@ -222,7 +222,18 @@ def design_if2_bank_for_lo_plans(
             start=min(f1.fc - f1.bw / 2, f2.fc - f2.bw / 2),
             stop=max(f1.fc + f1.bw / 2, f2.fc + f2.bw / 2),
         )
-        merged = design_single_if2_filter_for_band(merged_band, constraints)
+
+        # Preserve the steepest slope requirement of the merged filters
+        merged_default_slope = min(
+            f1.slope_db_per_decade,
+            f2.slope_db_per_decade,
+        )
+
+        merged = design_single_if2_filter_for_band(
+            merged_band,
+            constraints,
+            default_slope_db_per_decade=merged_default_slope,   # <-- NEW
+        )
         filters[merge_i] = merged
         del filters[merge_j]
 

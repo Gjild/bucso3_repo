@@ -34,6 +34,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def prepare_mask(cfg: SystemConfig) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    Load and parse the spur mask CSV (if configured) once.
+
+    Returns:
+        (mask_freqs, mask_levels) or (None, None) if no mask is configured.
+    """
+    mask_cfg = cfg.spur_limits.mask
+    if not mask_cfg or not mask_cfg.csv_path:
+        return None, None
+
+    data = np.genfromtxt(mask_cfg.csv_path, delimiter=",", comments="#")
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    if data.size == 0 or data.shape[1] < 2:
+        raise ValueError(
+            f"Spur mask CSV '{mask_cfg.csv_path}' must have at least two columns (freq, level_dbc)."
+        )
+
+    # Treat leading NaN row as an un-commented header
+    if data.shape[0] > 1 and (np.isnan(data[0, 0]) or np.isnan(data[0, 1])):
+        data = data[1:, :]
+        if data.size == 0 or data.shape[1] < 2:
+            raise ValueError(
+                f"Spur mask CSV '{mask_cfg.csv_path}' has only a header and no data rows."
+            )
+
+    mask_freqs = data[:, 0].astype(float)
+    mask_levels = data[:, 1].astype(float)
+    idx = np.argsort(mask_freqs)
+    return mask_freqs[idx], mask_levels[idx]
+
+
 @dataclass
 class SpurResult:
     """
@@ -121,6 +155,18 @@ def _build_if1_input_bands(
     """
     Fundamental + harmonics, clipped by Mixer1 IF range, then segmented along
     an IF1 frequency grid (spec 9.5).
+
+    Canonical semantics for IF1 harmonics:
+
+      * cfg.if1_harmonics_dbc[k] is interpreted as the **integrated power over
+        the k-th harmonic band derived from the effective IF1 band for this
+        configuration** (rf_conf.if1_subband or cfg.if1_band), before clipping
+        by Mixer1 IF range.
+
+      * This may differ numerically from examples that use a fixed global
+        950–2450 MHz band for all configs, but is the chosen planning-grade
+        convention for this tool and should be used when deriving harmonic
+        levels from measurements.
 
     Power semantics (aligned with spec):
 
@@ -272,6 +318,9 @@ def coarse_if2_spur_control_regions_for_lo_plan(
 
     Model:
       * Only Mixer1 wideband spurs.
+      * These spurs are mapped through Mixer2's **fundamental** path only.
+      * Mixer2's own spur families (from its spur table, LO2 harmonics/PLLs)
+        are ignored at this stage and are handled only in the full spur pass.
       * Ignore IF2 filter completely.
       * Map surviving Mixer1 spurs through Mixer2 fundamental path
         into RF to classify in-band / out-of-band.
@@ -288,6 +337,12 @@ def coarse_if2_spur_control_regions_for_lo_plan(
       ignored in this coarse pass for performance. Masks are applied only
       in the detailed spur evaluation.
     """
+    def _is_desired_family(mixer_cfg, spur_spec) -> bool:
+        return (
+            spur_spec.entry.m == mixer_cfg.desired_m
+            and spur_spec.entry.n == mixer_cfg.desired_n
+        )
+        
     grids = cfg.grids
     regions: list[IF2SpurControlRegion] = []
     worst_margin: Optional[dB] = None
@@ -311,6 +366,10 @@ def coarse_if2_spur_control_regions_for_lo_plan(
     # 2) Mixer1 spur families (all LO1 tones)
     m1_lo_tones = _build_lo_tones_for_synth(lo_plan.lo1_freq, cfg.lo1)
     m1_spur_specs = resolve_spur_families_for_tones(cfg.mixer1, m1_lo_tones)
+    m1_spur_specs = [
+        spec for spec in m1_spur_specs
+        if not _is_desired_family(cfg.mixer1, spec)
+    ]
 
     m2_if_range = cfg.mixer2.ranges.if_range
 
@@ -327,10 +386,10 @@ def coarse_if2_spur_control_regions_for_lo_plan(
     sign2 = lo_plan.sign_combo.sign2
     lo2_freq = lo_plan.lo2_freq
 
-    for in_band in m1_bands:
+    for input_band in m1_bands:
         for spec in m1_spur_specs:
             spur = generate_wideband_spur_band(
-                input_band=in_band,
+                input_band=input_band,
                 spur_spec=spec,
                 min_level_considered_dbc=grids.min_spur_level_considered_dbc,
             )
@@ -484,6 +543,15 @@ def classify_spur_band_in_out(
     rf_band: Range,
     oob_range: Optional[Range],
 ) -> Tuple[bool, bool]:
+    """
+    Classify a spur band as in-band / out-of-band based on its **center
+    frequency** only.
+
+    This is a planning-grade approximation: very wide spur bands that partly
+    overlap the RF channel may be under- or over-classified. The spur *level*
+    itself still comes from an integrated model; only the in/out flags are
+    center-based.
+    """
     center = spur_band.center_freq
     in_band = rf_band.contains(center)
     if oob_range is None:
@@ -499,6 +567,8 @@ def evaluate_spurs_for_config_and_lo_plan(
     lo_plan: LOPlanCandidate,
     if2_filter: IF2Filter,
     rf_filter: RFFilter,
+    mask_freqs: Optional[np.ndarray] = None,
+    mask_levels: Optional[np.ndarray] = None,
 ) -> Tuple[List[SpurResult], ConfigSpurSummary]:
     """
     Full spur evaluation for a single RF configuration and LO plan.
@@ -511,55 +581,49 @@ def evaluate_spurs_for_config_and_lo_plan(
     Narrowband spurs:
       * Mixer2 LO→RF and IF→RF isolation, treated as tones (including LO harmonics/PLLs).
     """
+    # Helper: identify the (m, n) of the desired mixer product so we can
+    # exclude it from the spur lists.
+    def _is_desired_family(mixer_cfg, spur_spec) -> bool:
+        return (
+            spur_spec.entry.m == mixer_cfg.desired_m
+            and spur_spec.entry.n == mixer_cfg.desired_n
+        )
+    
     results: List[SpurResult] = []
     grids = cfg.grids
 
     # Spur mask (if provided)
     mask_cfg = cfg.spur_limits.mask
-    mask_freqs: Optional[np.ndarray] = None
-    mask_levels: Optional[np.ndarray] = None
-    if mask_cfg and mask_cfg.csv_path:
-        data = np.genfromtxt(mask_cfg.csv_path, delimiter=",", comments="#")
-        if data.ndim == 1:
-            data = data.reshape(1, -1)
+    mask_freqs_local = mask_freqs
+    mask_levels_local = mask_levels
+    
+    # Fallback: load on demand if not provided (e.g. older callers)
+    if mask_cfg and mask_cfg.csv_path and (
+        mask_freqs_local is None or mask_levels_local is None
+    ):
+        mask_freqs_local, mask_levels_local = prepare_mask(cfg)
 
-        if data.size == 0 or data.shape[1] < 2:
-            raise ValueError(
-                f"Spur mask CSV '{mask_cfg.csv_path}' must have at least two columns (freq, level_dbc)."
-            )
-
-        # Treat leading NaN row as an un-commented header
-        if data.shape[0] > 1 and (np.isnan(data[0, 0]) or np.isnan(data[0, 1])):
-            data = data[1:, :]
-            if data.size == 0 or data.shape[1] < 2:
-                raise ValueError(
-                    f"Spur mask CSV '{mask_cfg.csv_path}' has only a header and no data rows."
-                )
-
-        mask_freqs = data[:, 0].astype(float)
-        mask_levels = data[:, 1].astype(float)
-        idx = np.argsort(mask_freqs)
-        mask_freqs = mask_freqs[idx]
-        mask_levels = mask_levels[idx]
+    if not mask_cfg or not mask_cfg.csv_path:
+        mask_freqs_local = None
+        mask_levels_local = None
 
     def interpolate_mask_level_center(freq: float) -> Optional[float]:
-        if mask_freqs is None or mask_levels is None:
+        if mask_freqs_local is None or mask_levels_local is None:
             return None
-        lo_f = mask_freqs[0]
-        hi_f = mask_freqs[-1]
+        lo_f = mask_freqs_local[0]
+        hi_f = mask_freqs_local[-1]
         f_clamped = float(np.clip(freq, lo_f, hi_f))
-        return float(np.interp(f_clamped, mask_freqs, mask_levels))
+        return float(np.interp(f_clamped, mask_freqs_local, mask_levels_local))
 
     def interpolate_mask_level_worst_case(f_start: float, f_stop: float) -> Optional[float]:
-        if mask_freqs is None or mask_levels is None:
+        if mask_freqs_local is None or mask_levels_local is None:
             return None
-        lo_f = mask_freqs[0]
-        hi_f = mask_freqs[-1]
-        # Sample along the spur band
+        lo_f = mask_freqs_local[0]
+        hi_f = mask_freqs_local[-1]
         n = 16
         freqs = np.linspace(f_start, f_stop, n)
         freqs = np.clip(freqs, lo_f, hi_f)
-        levels = np.interp(freqs, mask_freqs, mask_levels)
+        levels = np.interp(freqs, mask_freqs_local, mask_levels_local)
         return float(levels.min())
 
     mask_eval_mode = cfg.spur_limits.mask_eval_mode.lower()
@@ -570,6 +634,13 @@ def evaluate_spurs_for_config_and_lo_plan(
     m1_bands = _build_if1_input_bands(cfg, rf_conf)
     m1_lo_tones = _build_lo_tones_for_synth(lo_plan.lo1_freq, cfg.lo1)
     m1_spur_specs = resolve_spur_families_for_tones(cfg.mixer1, m1_lo_tones)
+    
+    # Drop the desired (m, n) family for Mixer1 so the fundamental
+    # IF1->IF2 path is not treated as a spur.
+    m1_spur_specs = [
+        spec for spec in m1_spur_specs
+        if not _is_desired_family(cfg.mixer1, spec)
+    ]
 
     m1_spurs: List[MixerWidebandSpurBand] = []
     for in_band in m1_bands:
@@ -696,6 +767,14 @@ def evaluate_spurs_for_config_and_lo_plan(
     # 3) Mixer2 spur families
     m2_lo_tones = _build_lo_tones_for_synth(lo_plan.lo2_freq, cfg.lo2)
     m2_spur_specs = resolve_spur_families_for_tones(cfg.mixer2, m2_lo_tones)
+    
+    # Drop the desired (m, n) family for Mixer2 so that the desired
+    # IF2->RF product is not treated as a spur and never checked against
+    # in-band / out-of-band spur limits.
+    m2_spur_specs = [
+        spec for spec in m2_spur_specs
+        if not _is_desired_family(cfg.mixer2, spec)
+    ]
 
     m2_spurs: List[MixerWidebandSpurBand] = []
     for in_band in m2_input_bands:
@@ -784,6 +863,8 @@ def evaluate_spurs_for_config_and_lo_plan(
                     mask_limit = interpolate_mask_level_worst_case(spur.f_start, spur.f_stop)
 
         effective_limit: Optional[dBc] = None
+        # Both scalar limits and mask limits are treated as **hard** limits.
+        # Where both exist, the stricter (lower) limit is enforced.
         if scalar_limit is not None and mask_limit is not None:
             effective_limit = min(scalar_limit, mask_limit)
         elif scalar_limit is not None:
@@ -821,7 +902,71 @@ def evaluate_spurs_for_config_and_lo_plan(
         )
         results.append(res)
 
-    # Only Mixer2 spurs reach RF band as wideband products in this model
+    # 3a) Mixer1-wideband and other non-desired IF2 content
+    #     propagated via Mixer2's desired fundamental path.
+    #
+    # Any MixerInputBand at IF2 that is *not* the desired IF2 band
+    # represents "junk" at Mixer2's IF port (cascaded Mixer1 spurs,
+    # Mixer1 LO/IF leakage, etc.). When Mixer2 mixes this junk via its
+    # fundamental LO2 ± IF2 path, the resulting RF content is a spur
+    # and must be checked against RF limits.
+    sign2 = lo_plan.sign_combo.sign2
+    lo2_freq = lo_plan.lo2_freq
+
+    for band in m2_input_bands:
+        # The desired IF2 band maps to the desired RF channel via the
+        # same (m, n) family and should *not* be treated as a spur.
+        if band.name == "IF2_desired_band":
+            continue
+
+        if2_lo = band.f_start
+        if2_hi = band.f_stop
+        if if2_hi <= if2_lo:
+            continue
+
+        # Map IF2 band to RF via Mixer2 fundamental
+        if sign2 > 0:
+            # RF = LO2 + IF2
+            rf_start = lo2_freq + if2_lo
+            rf_stop = lo2_freq + if2_hi
+        else:
+            # RF = LO2 - IF2
+            rf_start = lo2_freq - if2_hi
+            rf_stop = lo2_freq - if2_lo
+
+        if rf_stop <= rf_start:
+            continue
+
+        rf_center = 0.5 * (rf_start + rf_stop)
+
+        fund_spur = MixerWidebandSpurBand(
+            name=f"M2_fund_from_{band.name}",
+            mixer_name=cfg.mixer2.name,
+            m=cfg.mixer2.desired_m,
+            n=cfg.mixer2.desired_n,
+            lo_tone_name="fundamental",
+            input_band_name=band.name,
+            center_freq=rf_center,
+            f_start=rf_start,
+            f_stop=rf_stop,
+            # Level at IF2 after IF2 filter, referenced to IF1 fundamental.
+            # Mixer2 fundamental conversion gain is assumed 0 dB in this
+            # planning-grade model.
+            spur_level_rel_if1_dbc=band.level_dbc_integrated,
+            used_unspecified_floor=False,
+        )
+
+        # IF2 filter has already been applied when band.level_dbc_integrated
+        # was computed, so we disable IF2 attenuation here and apply only
+        # the RF BPF in the integration.
+        process_spur(
+            fund_spur,
+            mixer_name=cfg.mixer2.name,
+            apply_if2_filter=False,
+        )
+
+    # 3b) Mixer2 non-desired spur families (from its spur table) reach RF
+    #     as wideband products in this model.
     for spur in m2_spurs:
         process_spur(spur, mixer_name=cfg.mixer2.name, apply_if2_filter=False)
 
