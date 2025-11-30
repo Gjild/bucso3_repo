@@ -1,7 +1,7 @@
 # src/buc_planner/filters.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Tuple, Optional
 
@@ -16,11 +16,17 @@ class IF2Filter:
     Planning-grade IF2 BPF model:
         A(f) = 0 dB inside [fc - BW/2, fc + BW/2]
              = S * log10(|f - fc| / (BW/2))  outside, where S < 0 (dB/decade)
+
+    cfg_ids:
+        Optional set of configuration IDs this filter was designed / merged for.
+        Used only by the IF2 bank design heuristics (spur-aware merge/mapping).
+        It is ignored by the spur engine and output layer.
     """
     filter_id: str
     fc: Freq
     bw: Freq
     slope_db_per_decade: dB
+    cfg_ids: set[str] = field(default_factory=set)
 
     def attenuation_db(self, freq: np.ndarray) -> np.ndarray:
         """Return attenuation A(f) in dB for vector freq."""

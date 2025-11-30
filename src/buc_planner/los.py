@@ -38,6 +38,21 @@ class LOPlanCandidate:
     if2_band: Range  # required IF2 band for desired path
     rf_band: Range   # resulting RF band from desired path
 
+def lo_plan_key(plan: "LOPlanCandidate") -> tuple[str, Freq, Freq, int, int]:
+    """
+    Stable key for identifying a specific LO plan when storing auxiliary
+    metadata (e.g. IF2 spur-control regions).
+
+    We include LO1/LO2 frequencies and the sign combination so that two
+    different plans for the same config do not alias.
+    """
+    return (
+        plan.config_id,
+        float(plan.lo1_freq),
+        float(plan.lo2_freq),
+        int(plan.sign_combo.sign1),
+        int(plan.sign_combo.sign2),
+    )
 
 def _enumerate_lo_grid(lo_cfg: LOSynthConfig) -> np.ndarray:
     """Enumerate LO grid from freq_range with step size.

@@ -317,32 +317,37 @@ def coarse_if2_spur_control_regions_for_lo_plan(
       * early pruning of hopeless LO plans.
 
     Model:
-      * Only Mixer1 wideband spurs.
-      * These spurs are mapped through Mixer2's **fundamental** path only.
-      * Mixer2's own spur families (from its spur table, LO2 harmonics/PLLs)
-        are ignored at this stage and are handled only in the full spur pass.
-      * Ignore IF2 filter completely.
-      * Map surviving Mixer1 spurs through Mixer2 fundamental path
-        into RF to classify in-band / out-of-band.
-      * Compare spur level to scalar limits (mask ignored for speed).
-      * For any spur above its limit (negative margin), record an
-        IF2 region with required_rejection_db at IF2 equal to -margin.
-      * Return:
-          (regions, worst_margin_dB)
-        where worst_margin_dB is the minimum scalar margin across
-        all considered spurs (negative => violation).
+      * Mixer1 wideband spurs, mapped through Mixer2's fundamental path.
+      * A simplified Mixer2 spur model:
+          - spur families from mixer2.spur_table,
+          - driven by the desired IF2 band,
+          - LO2 fundamental tone only,
+          - no IF2 filter applied (we are designing it).
+      * Mixer2 spur families with n = 0 are ignored here (IF2 filter
+        cannot affect their level); they are handled in the detailed pass.
+      * Ignore any spur mask; only scalar limits are used.
+      * RF attenuation is approximated by RF BPF at the spur center.
+
+    For any spur above its scalar limit (negative margin), record an IF2
+    region with required_rejection_db at IF2 equal to -margin.
+
+    Returns:
+        (regions, worst_margin_dB)
+        where worst_margin_dB is the minimum scalar margin across all
+        considered spurs (negative => violation).
 
     NOTE:
       Frequency-dependent spur masks (if configured) are intentionally
       ignored in this coarse pass for performance. Masks are applied only
       in the detailed spur evaluation.
     """
+
     def _is_desired_family(mixer_cfg, spur_spec) -> bool:
         return (
             spur_spec.entry.m == mixer_cfg.desired_m
             and spur_spec.entry.n == mixer_cfg.desired_n
         )
-        
+
     grids = cfg.grids
     regions: list[IF2SpurControlRegion] = []
     worst_margin: Optional[dB] = None
@@ -350,28 +355,13 @@ def coarse_if2_spur_control_regions_for_lo_plan(
     in_band_limit = cfg.spur_limits.in_band_limit_dbc
     oob_limit = cfg.spur_limits.out_of_band_limit_dbc
     oob_range = cfg.spur_limits.out_of_band_range
-    rf_band_global = cfg.rf_band
+    rf_band_global = cfg.rf_band  # kept for potential future use
 
     # Per-configuration in-band RF channel
     rf_inband = Range(
         start=rf_conf.rf_center - 0.5 * rf_conf.rf_bandwidth,
         stop=rf_conf.rf_center + 0.5 * rf_conf.rf_bandwidth,
     )
-
-    # 1) Mixer1 input bands (same helper as detailed path)
-    m1_bands = _build_if1_input_bands(cfg, rf_conf)
-    if not m1_bands:
-        return regions, None
-
-    # 2) Mixer1 spur families (all LO1 tones)
-    m1_lo_tones = _build_lo_tones_for_synth(lo_plan.lo1_freq, cfg.lo1)
-    m1_spur_specs = resolve_spur_families_for_tones(cfg.mixer1, m1_lo_tones)
-    m1_spur_specs = [
-        spec for spec in m1_spur_specs
-        if not _is_desired_family(cfg.mixer1, spec)
-    ]
-
-    m2_if_range = cfg.mixer2.ranges.if_range
 
     # Helper: classify center -> in/out band (no mask)
     def classify_rf_center(f_center: float) -> tuple[bool, bool]:
@@ -382,7 +372,25 @@ def coarse_if2_spur_control_regions_for_lo_plan(
             out_band = oob_range.contains(f_center) and not in_band
         return in_band, out_band
 
-    # 3) For each Mixer1 spur, see what happens if it enters Mixer2 as IF
+    # ------------------------------------------------------------------
+    # 1) Mixer1 spurs mapped through Mixer2 fundamental (existing logic)
+    # ------------------------------------------------------------------
+    m1_bands = _build_if1_input_bands(cfg, rf_conf)
+    if not m1_bands:
+        # No Mixer1 content => no cascaded spurs. Still need to consider Mixer2.
+        m1_bands = []
+
+    # Mixer1 spur families (all LO1 tones)
+    m1_lo_tones = _build_lo_tones_for_synth(lo_plan.lo1_freq, cfg.lo1)
+    m1_spur_specs = resolve_spur_families_for_tones(cfg.mixer1, m1_lo_tones)
+    m1_spur_specs = [
+        spec for spec in m1_spur_specs
+        if not _is_desired_family(cfg.mixer1, spec)
+    ]
+
+    m2_if_range = cfg.mixer2.ranges.if_range
+
+    # Map Mixer1 spurs to Mixer2 IF, then through Mixer2 fundamental to RF
     sign2 = lo_plan.sign_combo.sign2
     lo2_freq = lo_plan.lo2_freq
 
@@ -436,7 +444,7 @@ def coarse_if2_spur_control_regions_for_lo_plan(
             if scalar_limit is None:
                 continue
 
-            margin = scalar_limit - level_after_rf  # positive = OK, negative = violation
+            margin = scalar_limit - level_after_rf  # +OK / -violation
 
             if worst_margin is None or margin < worst_margin:
                 worst_margin = margin
@@ -455,8 +463,140 @@ def coarse_if2_spur_control_regions_for_lo_plan(
                     )
                 )
 
-    return regions, worst_margin
+    # ------------------------------------------------------------------
+    # 2) Simplified Mixer2 spur model (new)
+    #    IF2 desired band -> Mixer2 spur families (LO2 fundamental only)
+    # ------------------------------------------------------------------
+    # IF2 band that actually drives Mixer2 (from LO plan), clipped to Mixer2 IF range
+    if2_band_eff = lo_plan.if2_band.intersect(m2_if_range)
+    if if2_band_eff is not None and if2_band_eff.width > 0.0:
+        # Input band at Mixer2 IF: 0 dBc integrated (reference)
+        m2_input = MixerInputBand(
+            name="IF2_desired_band_coarse",
+            f_start=if2_band_eff.start,
+            f_stop=if2_band_eff.stop,
+            level_dbc_integrated=0.0,
+        )
 
+        # Only LO2 fundamental tone for coarse Mixer2 spur estimate
+        lo2_tones_all = _build_lo_tones_for_synth(lo_plan.lo2_freq, cfg.lo2)
+        lo2_fundamental = [t for t in lo2_tones_all if t.name == "fundamental"]
+
+        if lo2_fundamental:
+            m2_spur_specs = resolve_spur_families_for_tones(cfg.mixer2, lo2_fundamental)
+            # Drop the desired Mixer2 family so the desired path is never treated as a spur
+            m2_spur_specs = [
+                spec for spec in m2_spur_specs
+                if not _is_desired_family(cfg.mixer2, spec)
+            ]
+
+            for spec in m2_spur_specs:
+                m = spec.entry.m
+                n = spec.entry.n
+
+                # n = 0 families do not depend on IF2 amplitude; IF2 filter cannot help.
+                # They are still handled in the detailed spur pass, so here we only
+                # let them influence coarse pruning via that detailed stage.
+                if n == 0:
+                    continue
+
+                # Effective IF2 band for this spur family: clip by SpurTableEntry IF range
+                if2_family_band = Range(start=m2_input.f_start, stop=m2_input.f_stop)
+                if2_family_band = if2_family_band.intersect(spec.entry.if_range)
+                if if2_family_band is None or if2_family_band.width <= 0.0:
+                    continue
+
+                # Map this IF2 band through the Mixer2 spur family:
+                #   f_RF = m * LO2 + n * f_IF2
+                lo2 = lo_plan.lo2_freq
+                rf1 = m * lo2 + n * if2_family_band.start
+                rf2 = m * lo2 + n * if2_family_band.stop
+                rf_band = Range(start=min(rf1, rf2), stop=max(rf1, rf2))
+
+                # Clip by SpurTableEntry RF validity range
+                rf_band = rf_band.intersect(spec.entry.rf_range)
+                if rf_band is None or rf_band.width <= 0.0:
+                    continue
+
+                rf_center = 0.5 * (rf_band.start + rf_band.stop)
+                in_band, out_band = classify_rf_center(rf_center)
+                if not in_band and not out_band:
+                    continue
+
+                # Spur level at RF before any IF2 filter; Mixer2 conv. gain ≈ 0 dB.
+                level_before = m2_input.level_dbc_integrated + spec.effective_level_dbc
+                if level_before < grids.min_spur_level_considered_dbc:
+                    continue
+
+                # RF BPF coarse attenuation at center
+                a_rf = float(rf_filter.attenuation_db(np.array([rf_center]))[0])
+                level_after_rf = level_before - a_rf
+
+                # Scalar limit
+                scalar_limit: Optional[dBc] = None
+                if in_band and in_band_limit is not None:
+                    scalar_limit = in_band_limit
+                elif out_band and oob_limit is not None:
+                    scalar_limit = oob_limit
+                if scalar_limit is None:
+                    continue
+
+                margin = scalar_limit - level_after_rf  # +OK / -violation
+
+                if worst_margin is None or margin < worst_margin:
+                    worst_margin = margin
+
+                # For IF2 control regions, we only care about actual violations.
+                if margin >= 0.0:
+                    continue
+
+                # Derive the subset of IF2 that maps into the constrained RF region
+                target_rf_range: Optional[Range]
+                if in_band:
+                    target_rf_range = rf_inband
+                else:
+                    target_rf_range = oob_range
+
+                if target_rf_range is None:
+                    # No explicit out-of-band range; we can't localise the IF2
+                    # region, but worst_margin has still been updated.
+                    continue
+
+                rf_overlap = rf_band.intersect(target_rf_range)
+                if rf_overlap is None or rf_overlap.width <= 0.0:
+                    continue
+
+                M = m * lo2
+                if n > 0:
+                    if2_lo = (rf_overlap.start - M) / n
+                    if2_hi = (rf_overlap.stop - M) / n
+                else:  # n < 0
+                    if2_lo = (rf_overlap.stop - M) / n
+                    if2_hi = (rf_overlap.start - M) / n
+
+                if2_region = Range(
+                    start=min(if2_lo, if2_hi),
+                    stop=max(if2_lo, if2_hi),
+                )
+
+                # Ensure region lies within the family IF2 band & Mixer2 IF range
+                if2_region = if2_region.intersect(if2_family_band)
+                if if2_region is None or if2_region.width <= 0.0:
+                    continue
+
+                regions.append(
+                    IF2SpurControlRegion(
+                        config_id=rf_conf.config_id,
+                        kind="in_band" if in_band else "out_of_band",
+                        freq_start=if2_region.start,
+                        freq_stop=if2_region.stop,
+                        required_rejection_db=-margin,  # extra attenuation needed at IF2
+                        spur_name=f"M2[{m},{n}]_fund",
+                        mixer_name=cfg.mixer2.name,
+                    )
+                )
+
+    return regions, worst_margin
 
 if njit is not None:
     @njit(cache=True, fastmath=True)  # type: ignore[misc]

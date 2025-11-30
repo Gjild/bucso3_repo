@@ -29,13 +29,13 @@
     "use_numba": true
   },
   "spur_limits": {
-    "in_band_limit_dbc": -50.0,
-    "out_of_band_limit_dbc": -50.0,
+    "in_band_limit_dbc": -60.0,
+    "out_of_band_limit_dbc": -60.0,
     "mask_csv": null,
     "mask_eval_mode": "center"
   },
   "spur_floor_usage": {
-    "total_spurs": 5596,
+    "total_spurs": 4881,
     "spurs_with_unspecified_floor": 0
   },
   "modelling_notes": {

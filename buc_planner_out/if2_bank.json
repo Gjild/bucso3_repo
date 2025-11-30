@@ -1,27 +1,15 @@
 {
   "filters": [
     {
-      "filter_id": "if2_auto_rf_28.25GHz",
-      "fc": 4750000000.0,
-      "bw": 1600000000.0,
-      "slope_db_per_decade": -110.0
-    },
-    {
-      "filter_id": "if2_auto_rf_29.25GHz",
-      "fc": 4750000000.0,
-      "bw": 1600000000.0,
-      "slope_db_per_decade": -110.0
-    },
-    {
-      "filter_id": "if2_auto_rf_30.25GHz",
-      "fc": 4750000000.0,
-      "bw": 1600000000.0,
-      "slope_db_per_decade": -110.0
+      "filter_id": "if2_1a9479fd662f4c828ae2ba2aec2273f7",
+      "fc": 4751500000.0,
+      "bw": 1603000000.0,
+      "slope_db_per_decade": -20.0
     }
   ],
   "config_to_filter_id": {
-    "rf_28.25GHz": "if2_auto_rf_28.25GHz",
-    "rf_29.25GHz": "if2_auto_rf_28.25GHz",
-    "rf_30.25GHz": "if2_auto_rf_28.25GHz"
+    "rf_28.25GHz": "if2_1a9479fd662f4c828ae2ba2aec2273f7",
+    "rf_29.25GHz": "if2_1a9479fd662f4c828ae2ba2aec2273f7",
+    "rf_30.25GHz": "if2_1a9479fd662f4c828ae2ba2aec2273f7"
   }
 }

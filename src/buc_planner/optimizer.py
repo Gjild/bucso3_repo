@@ -11,6 +11,7 @@ from .filters import RFFilter
 from .los import (
     generate_lo_plan_candidates_for_config,
     LOPlanCandidate,
+    lo_plan_key,
 )
 from .if2_bank import (
     design_if2_bank_for_lo_plans,
@@ -28,6 +29,7 @@ from .progress import ProgressReporter, NullProgressReporter
 
 logger = logging.getLogger(__name__)
 
+LOPlanKey = tuple[str, float, float, int, int]
 
 @dataclass
 class PlannerResult:
@@ -101,7 +103,7 @@ class Planner:
     def _coarse_prune_lo_candidates(
         self,
         per_cfg_candidates: Dict[str, List[LOPlanCandidate]],
-    ) -> tuple[Dict[str, List[LOPlanCandidate]], Dict[str, List[IF2SpurControlRegion]]]:
+    ) -> tuple[Dict[str, List[LOPlanCandidate]], Dict[LOPlanKey, List[IF2SpurControlRegion]]]:
         """
         Use coarse spur analysis to:
           * Reject clearly hopeless LO candidates (margin << 0 dB),
@@ -113,7 +115,8 @@ class Planner:
         """
         cfg = self.cfg
         pruned: Dict[str, List[LOPlanCandidate]] = {}
-        control_regions_by_cfg: Dict[str, List[IF2SpurControlRegion]] = {}
+        # LO-plan-specific spur-control regions
+        control_regions_by_plan: Dict[LOPlanKey, List[IF2SpurControlRegion]] = {}
 
         coarse_min = cfg.grids.coarse_spur_margin_min_db  # negative threshold
         min_survivors_cfg = max(1, cfg.grids.min_lo_candidates_per_rf_after_coarse)
@@ -129,7 +132,8 @@ class Planner:
         for config_id, cand_list in per_cfg_candidates.items():
             rf_conf = rf_by_id[config_id]
             survivors: List[LOPlanCandidate] = []
-            all_regions: List[IF2SpurControlRegion] = []
+            # Regions per candidate (for this config only)
+            regions_per_cand: Dict[LOPlanKey, List[IF2SpurControlRegion]] = {}
             cfg_worst_margin: Optional[float] = None
 
             for cand in cand_list:
@@ -139,16 +143,18 @@ class Planner:
                     cand,
                     self.rf_filter,
                 )
+                key = lo_plan_key(cand)
+                regions_per_cand[key] = regions
 
                 if worst_margin is not None:
                     if cfg_worst_margin is None or worst_margin < cfg_worst_margin:
                         cfg_worst_margin = worst_margin
 
                 if worst_margin is not None and worst_margin < coarse_min:
+                    # Drop this candidate at the coarse stage
                     continue
 
                 survivors.append(cand)
-                all_regions.extend(regions)
 
             if not survivors:
                 k = min(len(cand_list), min_survivors_cfg)
@@ -177,16 +183,21 @@ class Planner:
                     survivors.extend(extra)
 
             pruned[config_id] = survivors
-            control_regions_by_cfg[config_id] = all_regions
+
+            # Attach spur-control regions only for the surviving candidates
+            for cand in survivors:
+                key = lo_plan_key(cand)
+                control_regions_by_plan[key] = regions_per_cand.get(key, [])
+
             self.progress.advance()
 
         self.progress.end()
-        return pruned, control_regions_by_cfg    
+        return pruned, control_regions_by_plan  
 
     def _search_lo_plans_for_filter_count(
         self,
         per_cfg_candidates: Dict[str, List[LOPlanCandidate]],
-        control_regions_by_cfg: Dict[str, List[IF2SpurControlRegion]],
+        control_regions_by_plan: Dict[LOPlanKey, List[IF2SpurControlRegion]],
         n_filters: int,
     ) -> Optional[SearchResult]:
         """
@@ -259,7 +270,7 @@ class Planner:
                 bank_design = design_if2_bank_for_lo_plans(
                     current,
                     cfg.filters.if2_constraints,
-                    spur_control_regions=control_regions_by_cfg,
+                    spur_control_regions=control_regions_by_plan,
                     target_n_filters=n_filters,
                 )
 
@@ -462,12 +473,12 @@ class Planner:
         coarse_result = self._coarse_prune_lo_candidates(per_cfg_candidates)
         
         if coarse_result is None:
-            # No coarse pruning implemented; keep all candidates and use
-            # empty control-region lists per config.
+            # Fallback: no coarse pruning; keep all candidates and no
+            # spur-control regions.
             pruned_candidates = per_cfg_candidates
-            control_regions_by_cfg = {cfg_id: [] for cfg_id in per_cfg_candidates}
+            control_regions_by_plan: Dict[LOPlanKey, List[IF2SpurControlRegion]] = {}
         else:
-            pruned_candidates, control_regions_by_cfg = coarse_result
+            pruned_candidates, control_regions_by_plan = coarse_result
 
         min_f = cfg.filters.if2_constraints.min_filters
         max_f = cfg.filters.if2_constraints.max_filters
@@ -479,7 +490,7 @@ class Planner:
         for n_filters in range(min_f, max_f + 1):
             search_res = self._search_lo_plans_for_filter_count(
                 pruned_candidates,
-                control_regions_by_cfg,
+                control_regions_by_plan,
                 n_filters,
             )
             if search_res is None:
